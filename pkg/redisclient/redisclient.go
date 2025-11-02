@@ -2,9 +2,19 @@ package redisclient
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/darwishdev/genaiclient/pkg/genaiconfig"
 	"github.com/redis/go-redis/v9"
+)
+
+const (
+	entityAgent       = "agent"
+	allAgentsSetKey   = "agents:set"
+	entityUser        = "user"
+	entityChat        = "chat"
+	allChatsSetKey    = "chats:set"
+	entityChatHistory = "chat:history"
 )
 
 // RedisClientInterface defines the contract for our Data Access Layer (DAL) using Redis.
@@ -15,10 +25,8 @@ type RedisClientInterface interface {
 	GetAgent(ctx context.Context, agentID string) (*genaiconfig.AgentConfig, error)
 	ListAgents(ctx context.Context) ([]*genaiconfig.AgentConfig, error)
 	RemoveAgent(ctx context.Context, agentID string) error
-	UpdateAgent(ctx context.Context, agentConfig genaiconfig.AgentConfig) error
 
 	// User Management
-	UpdateUserContext(ctx context.Context, userID string, userContext string) (*genaiconfig.User, error)
 	FindUserByID(ctx context.Context, userID string) (*genaiconfig.User, error)
 	RemoveUser(ctx context.Context, userID string) error
 
@@ -26,7 +34,6 @@ type RedisClientInterface interface {
 	GetChat(ctx context.Context, chatID string) (*genaiconfig.ChatConfig, error)
 	ListChats(ctx context.Context) ([]*genaiconfig.ChatConfig, error)
 	RemoveChat(ctx context.Context, chatID string) error
-	UpdateChat(ctx context.Context, chatConfig genaiconfig.AgentConfig) error
 	// Chat History Management
 	SaveChatMessage(ctx context.Context, chatID string, message genaiconfig.ChatMessage) error
 	GetChatHistory(ctx context.Context, chatID string) ([]genaiconfig.ChatMessage, error)
@@ -46,77 +53,146 @@ func NewRedisClient(client *redis.Client, isDisabled bool) RedisClientInterface 
 	}
 }
 
-// --- RedisClientInterface Implementation (Placeholders) ---
-
-func (r *RedisClient) CreateAgent(ctx context.Context, agentConfig genaiconfig.AgentConfig) error {
-	// TODO: Implement Redis logic (e.g., HSET for agent config).
-	return nil
+func (r *RedisClient) CreateAgent(ctx context.Context, agent genaiconfig.AgentConfig) error {
+	if err := r.setJSON(ctx, generateKey(entityAgent, agent.ID), agent); err != nil {
+		return err
+	}
+	return r.saveToSet(ctx, allAgentsSetKey, agent.ID)
 }
 
 func (r *RedisClient) GetAgent(ctx context.Context, agentID string) (*genaiconfig.AgentConfig, error) {
-	// TODO: Implement Redis logic (e.g., HGETALL for agent config).
-	return nil, nil
+	key := generateKey(entityAgent, agentID)
+	bytes, err := r.getJSONBytes(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return getJSON[genaiconfig.AgentConfig](ctx, bytes)
 }
 
 func (r *RedisClient) ListAgents(ctx context.Context) ([]*genaiconfig.AgentConfig, error) {
-	// TODO: Implement Redis logic (e.g., SCAN or use an index).
-	return nil, nil
+	ids, err := r.getSetByKey(ctx, allAgentsSetKey)
+	if err != nil {
+		return nil, err
+	}
+	listBytes, err := r.listEntities(ctx, ids, allAgentsSetKey)
+	if err != nil {
+		return nil, err
+	}
+	return listEntitiesGeniric[genaiconfig.AgentConfig](ctx, listBytes, entityAgent)
 }
 
 func (r *RedisClient) RemoveAgent(ctx context.Context, agentID string) error {
-	// TODO: Implement Redis logic (e.g., DEL).
-	return nil
+	if err := r.deleteKeys(ctx, generateKey(entityAgent, agentID)); err != nil {
+		return err
+	}
+	return r.removeFromSet(ctx, allAgentsSetKey, agentID)
 }
 
-func (r *RedisClient) UpdateAgent(ctx context.Context, agentConfig genaiconfig.AgentConfig) error {
-	// TODO: Implement Redis logic (e.g., HSET to update).
-	return nil
-}
-func (r *RedisClient) CreateChat(ctx context.Context, chatConfig genaiconfig.ChatConfig) error {
-	// TODO: Implement Redis logic (e.g., SET or HSET for chat config).
-	return nil
-}
+// -----------------------------------------------------------
+// User Management
+// -----------------------------------------------------------
 
-func (r *RedisClient) GetChat(ctx context.Context, chatID string) (*genaiconfig.ChatConfig, error) {
-	// TODO: Implement Redis logic (e.g., GET and unmarshal chat config).
-	return nil, nil
-}
-
-func (r *RedisClient) ListChats(ctx context.Context) ([]*genaiconfig.ChatConfig, error) {
-	// TODO: Implement Redis logic (e.g., SMEMBERS or SCAN for all chats).
-	return nil, nil
-}
-
-func (r *RedisClient) RemoveChat(ctx context.Context, chatID string) error {
-	// TODO: Implement Redis logic (e.g., DEL chat and related history).
-	return nil
-}
-
-func (r *RedisClient) UpdateChat(ctx context.Context, chatConfig genaiconfig.AgentConfig) error {
-	// TODO: Implement Redis logic (e.g., overwrite or merge chat config).
-	return nil
-}
 func (r *RedisClient) UpdateUserContext(ctx context.Context, userID string, userContext string) (*genaiconfig.User, error) {
-	// TODO: Implement Redis logic (e.g., HSET for user context).
-	return nil, nil
+	user := &genaiconfig.User{ID: userID, Context: userContext}
+	if err := r.setJSON(ctx, generateKey(entityUser, userID), user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 func (r *RedisClient) FindUserByID(ctx context.Context, userID string) (*genaiconfig.User, error) {
-	// TODO: Implement Redis logic (e.g., HGETALL for user).
-	return nil, nil
+	key := generateKey(entityUser, userID)
+	bytes, err := r.getJSONBytes(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return getJSON[genaiconfig.User](ctx, bytes)
 }
 
 func (r *RedisClient) RemoveUser(ctx context.Context, userID string) error {
-	// TODO: Implement Redis logic (e.g., DEL).
-	return nil
+	return r.deleteKeys(ctx, generateKey(entityUser, userID))
 }
 
-func (r *RedisClient) SaveChatMessage(ctx context.Context, chatID string, message genaiconfig.ChatMessage) error {
-	// TODO: Implement Redis logic (e.g., LPUSH or ZADD to a list/sorted set).
-	return nil
+// -----------------------------------------------------------
+// Chat Management
+// -----------------------------------------------------------
+
+func (r *RedisClient) CreateChat(ctx context.Context, chat genaiconfig.ChatConfig) error {
+	if err := r.setJSON(ctx, generateKey(entityChat, chat.ID), chat); err != nil {
+		return err
+	}
+	return r.saveToSet(ctx, allChatsSetKey, chat.ID)
+}
+
+func (r *RedisClient) GetChat(ctx context.Context, chatID string) (*genaiconfig.ChatConfig, error) {
+	key := generateKey(entityChat, chatID)
+	bytes, err := r.getJSONBytes(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	return getJSON[genaiconfig.ChatConfig](ctx, bytes)
+}
+
+func (r *RedisClient) ListChats(ctx context.Context) ([]*genaiconfig.ChatConfig, error) {
+	ids, err := r.getSetByKey(ctx, allAgentsSetKey)
+	if err != nil {
+		return nil, err
+	}
+	listBytes, err := r.listEntities(ctx, ids, entityChat)
+	if err != nil {
+		return nil, err
+	}
+	return listEntitiesGeniric[genaiconfig.ChatConfig](ctx, listBytes, entityAgent)
+}
+
+func (r *RedisClient) RemoveChat(ctx context.Context, chatID string) error {
+	keys := []string{
+		generateKey(entityChat, chatID),
+		generateKey(entityChatHistory, chatID),
+	}
+	if err := r.deleteKeys(ctx, keys...); err != nil {
+		return err
+	}
+	return r.removeFromSet(ctx, allChatsSetKey, chatID)
+}
+
+// -----------------------------------------------------------
+// Chat History
+// -----------------------------------------------------------
+
+func (r *RedisClient) SaveChatMessage(ctx context.Context, chatID string, msg genaiconfig.ChatMessage) error {
+	if r.isDisabled {
+		return nil
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	return r.client.RPush(ctx, generateKey(entityChatHistory, chatID), data).Err()
 }
 
 func (r *RedisClient) GetChatHistory(ctx context.Context, chatID string) ([]genaiconfig.ChatMessage, error) {
-	// TODO: Implement Redis logic (e.g., LRANGE or ZRANGE).
-	return nil, nil
+	if r.isDisabled {
+		return nil, nil
+	}
+
+	key := generateKey(entityChatHistory, chatID)
+	values, err := r.client.LRange(ctx, key, 0, -1).Result()
+	if err == redis.Nil {
+		return []genaiconfig.ChatMessage{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	history := make([]genaiconfig.ChatMessage, 0, len(values))
+	for _, val := range values {
+		var msg genaiconfig.ChatMessage
+		if err := json.Unmarshal([]byte(val), &msg); err == nil {
+			history = append(history, msg)
+		}
+	}
+	return history, nil
 }

@@ -60,7 +60,7 @@ func (g *Genaiclient) GetAgent(ctx context.Context, agentID string) (agent.Agent
 
 func (g *Genaiclient) ListAgents(ctx context.Context) ([]agent.AgentInterface, error) {
 	// Implementation to list agents from Redis.
-	return g.redisClient.ListAgents(ctx)
+	return nil, nil
 }
 
 func (g *Genaiclient) RemoveAgent(ctx context.Context, agentID string) error {
@@ -76,3 +76,4 @@ func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string) ([]*pgvector
 	// TODO: Implement bulk embedding logic.
 	return nil, nil
 }
+

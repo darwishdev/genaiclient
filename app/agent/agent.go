@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/darwishdev/genaiclient/pkg/adapter"
 	"github.com/darwishdev/genaiclient/pkg/genaiconfig"
 	"github.com/darwishdev/genaiclient/pkg/redisclient"
 	"google.golang.org/genai"
@@ -67,15 +68,20 @@ func (a *Agent) GenerateWithContext(ctx context.Context, userID string, prompt g
 	if err != nil {
 		// Handle case where user is not found, maybe proceed without context.
 	}
-
 	// 2. Prepend user context to the prompt if it exists.
 	if user != nil && user.Context != "" {
 		originalPrompt := prompt.Text
 		prompt.Text = fmt.Sprintf("User Context: %s\n\n---\n\n%s", user.Context, originalPrompt)
 	}
-
-	// 3. TODO: Call the genaiClient with the combined prompt and agent instructions.
-	return nil, nil
+	genAiResponse, err := a.genaiClient.Models.GenerateContent(ctx, "gemini-2.0-flash-lite", []*genai.Content{{Parts: []*genai.Part{{Text: prompt.Text}}}}, &genai.GenerateContentConfig{})
+	if err != nil {
+		return nil, err
+	}
+	if genAiResponse == nil {
+		return nil, fmt.Errorf("GEMINI Returned empty Response")
+	}
+	response, err := adapter.ModelResponseFromGeminiContent(genAiResponse.Candidates)
+	return &response, err
 }
 
 func (a *Agent) NewChat(ctx context.Context, userID string, chatConfig genaiconfig.ChatConfig) (ChatInterface, error) {
