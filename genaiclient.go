@@ -24,16 +24,18 @@ type GenaiClientInterface interface {
 
 // Genaiclient is the concrete implementation of the GenaiClientInterface.
 type Genaiclient struct {
-	genaiClient *genai.Client
-	redisClient redisclient.RedisClientInterface
+	genaiClient  *genai.Client
+	defaultModel string
+	redisClient  redisclient.RedisClientInterface
 }
 
 // NewGenaiClient is the constructor for the Genaiclient.
-func NewGenaiClient(ctx context.Context, genaiClient *genai.Client, redisInstance *redis.Client) (GenaiClientInterface, error) {
+func NewGenaiClient(ctx context.Context, genaiClient *genai.Client, redisInstance *redis.Client, defaultModel string) (GenaiClientInterface, error) {
 	redisCient := redisclient.NewRedisClient(redisInstance, false)
 	return &Genaiclient{
-		redisClient: redisCient,
-		genaiClient: genaiClient,
+		redisClient:  redisCient,
+		defaultModel: defaultModel,
+		genaiClient:  genaiClient,
 	}, nil
 }
 
@@ -41,11 +43,14 @@ func NewGenaiClient(ctx context.Context, genaiClient *genai.Client, redisInstanc
 
 func (g *Genaiclient) NewAgent(ctx context.Context, agentConfig genaiconfig.AgentConfig) (agent.AgentInterface, error) {
 	// 1. Persist the agent configuration using the Redis DAL.
+	if agentConfig.DefaultModel == "" {
+		agentConfig.DefaultModel = g.defaultModel
+	}
 	if err := g.redisClient.CreateAgent(ctx, agentConfig); err != nil {
 		return nil, err
 	}
 	// 2. Create a new agent instance, injecting its dependencies.
-	return agent.NewAgent(agentConfig, g.genaiClient, g.redisClient), nil
+	return agent.NewAgent(agentConfig, g.genaiClient, g.redisClient, agentConfig.DefaultModel), nil
 }
 
 func (g *Genaiclient) GetAgent(ctx context.Context, agentID string) (agent.AgentInterface, error) {
@@ -55,7 +60,7 @@ func (g *Genaiclient) GetAgent(ctx context.Context, agentID string) (agent.Agent
 		return nil, err
 	}
 	// 2. Create an agent instance with the retrieved config.
-	return agent.NewAgent(*agentConfig, g.genaiClient, g.redisClient), nil
+	return agent.NewAgent(*agentConfig, g.genaiClient, g.redisClient, g.defaultModel), nil
 }
 
 func (g *Genaiclient) ListAgents(ctx context.Context) ([]agent.AgentInterface, error) {

@@ -12,8 +12,6 @@ import (
 	"google.golang.org/genai"
 )
 
-// Your Google API key
-
 func main() {
 	ctx := context.Background()
 	apiKey := os.Getenv("GEMINI_API_KEY")
@@ -35,25 +33,26 @@ func main() {
 		DB:         REDIS_DATABASE, // use default DB
 		ClientName: "genaiclient",
 	})
-	genaiClient, err := genaiclient.NewGenaiClient(ctx, geminiClient, redisClient)
+	genaiClient, err := genaiclient.NewGenaiClient(ctx, geminiClient, redisClient, "gemini-2.5-flash-lite")
 	if err != nil {
 		log.Fatal(err)
 	}
 	agentConfig := genaiconfig.AgentConfig{
-		ID:      "weather-reporter-v1",
-		Persona: "You are a friendly weather reporter. You must use the tools provided to answer questions about the weather.",
+		ID:           "Joke-Teller",
+		Persona:      "You are a friendly joke teller. You must tell the user funny jokes your name is holly",
+		DefaultModel: "gemini-2.5-flash-lite",
 	}
-	weatherAgent, err := genaiClient.NewAgent(ctx, agentConfig)
+	jokesAgent, err := genaiClient.NewAgent(ctx, agentConfig)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if weatherAgent == nil {
+	if jokesAgent == nil {
 		log.Fatal("nil agent")
 	}
-	prompt := genaiconfig.Prompt{Text: "Tell Me Weather On Cairo"}
-	response, err := weatherAgent.GenerateWithContext(ctx, USER_ID, prompt)
+	prompt := &genaiconfig.Prompt{Text: "Tell Me Funny Joke"}
+	response, err := jokesAgent.Generate(ctx, USER_ID, prompt)
 	fmt.Println(err)
 	fmt.Println(response)
 }

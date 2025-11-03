@@ -10,93 +10,151 @@ import (
 	"google.golang.org/genai"
 )
 
-// AgentInterface defines the contract for an AI agent's capabilities.
+// -----------------------------------------------------------
+// Error constants
+// -----------------------------------------------------------
+
+const (
+	ErrToolNotFound          = "tool %q not found"
+	ErrConvertAgentConfig    = "error converting the agent config to genai generation config: %w"
+	ErrConvertPrompt         = "error converting the prompt to genai content: %w"
+	ErrGeminiEmptyResponse   = "gemini returned empty response"
+	ErrCreateChat            = "failed to create chat in redis: %w"
+	ErrGetChat               = "failed to get chat from redis: %w"
+	ErrConvertGeminiResponse = "error converting gemini response to model response: %w"
+	ErrCreateOrUpdateAgent   = "failed to create or update agent in redis: %w"
+	ErrGenerateContent       = "failed to generate content using model: %w"
+)
+
+// -----------------------------------------------------------
+// Agent interface and implementation
+// -----------------------------------------------------------
+
 type AgentInterface interface {
 	GetConfig() genaiconfig.AgentConfig
-	AddTool(ctx context.Context, goFunc interface{}) error
+	AddTool(ctx context.Context, tool *genaiconfig.Tool) error
 	RemoveTool(ctx context.Context, toolName string) error
-	ListTools(ctx context.Context) ([]string, error)
-	GenerateWithContext(ctx context.Context, userID string, prompt genaiconfig.Prompt, overrideConfig ...*genaiconfig.ChatConfig) (*genaiconfig.ModelResponse, error)
-	NewChat(ctx context.Context, userID string, chatConfig genaiconfig.ChatConfig) (ChatInterface, error)
-	GetChat(ctx context.Context, userID string, chatID string) (ChatInterface, error)
-	ListChatsByUser(ctx context.Context, userID string) ([]ChatInterface, error)
+	ListTools(ctx context.Context) []*genaiconfig.Tool
+	Generate(ctx context.Context, userID string, prompt *genaiconfig.Prompt, overrideConfig ...*genaiconfig.ChatConfig) (*genaiconfig.ModelResponse, error)
+	NewChat(ctx context.Context, chatConfig *genaiconfig.ChatConfig) (ChatInterface, error)
+	GetChat(ctx context.Context, chatID string) (ChatInterface, error)
+	ListChatsByUser(ctx context.Context, userID string) ([]*genaiconfig.ChatConfig, error)
 }
 
-// Agent is the concrete implementation of the AgentInterface.
 type Agent struct {
-	config      genaiconfig.AgentConfig
-	genaiClient *genai.Client
-	redisClient redisclient.RedisClientInterface
+	config       genaiconfig.AgentConfig
+	genaiClient  *genai.Client
+	redisClient  redisclient.RedisClientInterface
+	defaultModel string
 }
 
-// NewAgent is the constructor for the Agent.
-func NewAgent(config genaiconfig.AgentConfig, genaiClient *genai.Client, redisClient redisclient.RedisClientInterface) AgentInterface {
+func NewAgent(config genaiconfig.AgentConfig, genaiClient *genai.Client, redisClient redisclient.RedisClientInterface, defaultModel string) AgentInterface {
 	return &Agent{
-		config:      config,
-		genaiClient: genaiClient,
-		redisClient: redisClient,
+		config:       config,
+		genaiClient:  genaiClient,
+		redisClient:  redisClient,
+		defaultModel: defaultModel,
 	}
 }
 
-// --- AgentInterface Implementation ---
+// -----------------------------------------------------------
+// AgentInterface Implementation
+// -----------------------------------------------------------
 
 func (a *Agent) GetConfig() genaiconfig.AgentConfig {
 	return a.config
 }
 
-func (a *Agent) AddTool(ctx context.Context, goFunc interface{}) error {
-	// TODO: 1. Convert goFunc to a Tool struct using the adapter.
-	// TODO: 2. Append the new tool to a.config.Tools.
-	// TODO: 3. Call a.redisClient.UpdateAgent(ctx, a.config) to persist the change.
+func (a *Agent) AddTool(ctx context.Context, tool *genaiconfig.Tool) error {
+	a.config.DefaultGenerationConfig.Tools = append(a.config.DefaultGenerationConfig.Tools, tool)
+	if err := a.redisClient.CreateAgent(ctx, a.config); err != nil {
+		return fmt.Errorf(ErrCreateOrUpdateAgent, err)
+	}
 	return nil
 }
 
 func (a *Agent) RemoveTool(ctx context.Context, toolName string) error {
-	// TODO: 1. Find and remove the tool from a.config.Tools.
-	// TODO: 2. Call a.redisClient.UpdateAgent(ctx, a.config) to persist the change.
-	return nil
+	for i, t := range a.config.DefaultGenerationConfig.Tools {
+		if t.Name == toolName {
+			a.config.DefaultGenerationConfig.Tools = append(a.config.DefaultGenerationConfig.Tools[:i], a.config.DefaultGenerationConfig.Tools[i+1:]...)
+			if err := a.redisClient.CreateAgent(ctx, a.config); err != nil {
+				return fmt.Errorf(ErrCreateOrUpdateAgent, err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf(ErrToolNotFound, toolName)
 }
 
-func (a *Agent) ListTools(ctx context.Context) ([]string, error) {
-	// Implementation to list tools from a.config.Tools.
-	return nil, nil
+func (a *Agent) ListTools(ctx context.Context) []*genaiconfig.Tool {
+	return a.config.DefaultGenerationConfig.Tools
 }
 
-func (a *Agent) GenerateWithContext(ctx context.Context, userID string, prompt genaiconfig.Prompt, overrideConfig ...*genaiconfig.ChatConfig) (*genaiconfig.ModelResponse, error) {
-	// 1. Fetch user context for personalization.
+func (a *Agent) Generate(ctx context.Context, userID string, prompt *genaiconfig.Prompt, overrideConfig ...*genaiconfig.ChatConfig) (*genaiconfig.ModelResponse, error) {
+	if a.config.DefaultGenerationConfig == nil {
+		temp := float32(0.01)
+		a.config.DefaultGenerationConfig = &genaiconfig.GenerationConfig{Temperature: &temp}
+	}
+
+	config, err := adapter.GeminiConfigFromGenerationConfig(a.config.DefaultGenerationConfig)
+	if err != nil {
+		return nil, fmt.Errorf(ErrConvertAgentConfig, err)
+	}
+
 	user, err := a.redisClient.FindUserByID(ctx, userID)
-	if err != nil {
-		// Handle case where user is not found, maybe proceed without context.
+	if err == nil && user != nil && len(user.Context) > 0 {
+		userContext := fmt.Sprintf("User Context: %s", user.Context)
+		config.SystemInstruction.Parts = append(config.SystemInstruction.Parts, &genai.Part{Text: userContext})
 	}
-	// 2. Prepend user context to the prompt if it exists.
-	if user != nil && user.Context != "" {
-		originalPrompt := prompt.Text
-		prompt.Text = fmt.Sprintf("User Context: %s\n\n---\n\n%s", user.Context, originalPrompt)
-	}
-	genAiResponse, err := a.genaiClient.Models.GenerateContent(ctx, "gemini-2.0-flash-lite", []*genai.Content{{Parts: []*genai.Part{{Text: prompt.Text}}}}, &genai.GenerateContentConfig{})
+
+	content, err := adapter.GeminiContentFromPrompt(prompt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf(ErrConvertPrompt, err)
+	}
+
+	model := a.defaultModel
+	if len(prompt.Model) > 0 {
+		model = prompt.Model
+	}
+
+	genAiResponse, err := a.genaiClient.Models.GenerateContent(ctx, model, content, config)
+	if err != nil {
+		return nil, fmt.Errorf(ErrGenerateContent, err)
 	}
 	if genAiResponse == nil {
-		return nil, fmt.Errorf("GEMINI Returned empty Response")
+		return nil, fmt.Errorf(ErrGeminiEmptyResponse)
 	}
+
 	response, err := adapter.ModelResponseFromGeminiContent(genAiResponse.Candidates)
-	return &response, err
+	if err != nil {
+		return nil, fmt.Errorf(ErrConvertGeminiResponse, err)
+	}
+	return response, nil
 }
 
-func (a *Agent) NewChat(ctx context.Context, userID string, chatConfig genaiconfig.ChatConfig) (ChatInterface, error) {
-	// 1. TODO: Create a new chat record in Redis if needed.
-	// 2. Return a new chat instance, injecting dependencies.
-	return NewChat(chatConfig, userID, a.config.ID, a.genaiClient, a.redisClient), nil
+func (a *Agent) NewChat(ctx context.Context, chatConfig *genaiconfig.ChatConfig) (ChatInterface, error) {
+	chatConfig.AgentID = a.config.ID
+	if err := a.redisClient.CreateChat(ctx, chatConfig); err != nil {
+		return nil, fmt.Errorf(ErrCreateChat, err)
+	}
+	if chatConfig.GenerationConfig == nil {
+		chatConfig.GenerationConfig = a.config.DefaultGenerationConfig
+	}
+	return NewChat(ctx, chatConfig, a.genaiClient, a.redisClient)
 }
 
-func (a *Agent) GetChat(ctx context.Context, userID string, chatID string) (ChatInterface, error) {
-	// TODO: 1. Verify from Redis that this chatID belongs to this userID.
-	// TODO: 2. Reconstruct the chat instance.
-	return nil, nil
+func (a *Agent) GetChat(ctx context.Context, chatID string) (ChatInterface, error) {
+	chatConfig, err := a.redisClient.GetChat(ctx, chatID)
+	if err != nil {
+		return nil, fmt.Errorf(ErrGetChat, err)
+	}
+
+	if chatConfig.GenerationConfig == nil {
+		chatConfig.GenerationConfig = a.config.DefaultGenerationConfig
+	}
+	return NewChat(ctx, chatConfig, a.genaiClient, a.redisClient)
 }
 
-func (a *Agent) ListChatsByUser(ctx context.Context, userID string) ([]ChatInterface, error) {
-	// TODO: Implement logic to list chats for a user from Redis.
-	return nil, nil
+func (a *Agent) ListChatsByUser(ctx context.Context, userID string) ([]*genaiconfig.ChatConfig, error) {
+	return a.redisClient.ListChatsByUser(ctx, userID, a.config.ID)
 }

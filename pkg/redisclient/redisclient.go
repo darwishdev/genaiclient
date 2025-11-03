@@ -30,9 +30,10 @@ type RedisClientInterface interface {
 	FindUserByID(ctx context.Context, userID string) (*genaiconfig.User, error)
 	RemoveUser(ctx context.Context, userID string) error
 
-	CreateChat(ctx context.Context, chatConfig genaiconfig.ChatConfig) error
+	CreateChat(ctx context.Context, chatConfig *genaiconfig.ChatConfig) error
 	GetChat(ctx context.Context, chatID string) (*genaiconfig.ChatConfig, error)
 	ListChats(ctx context.Context) ([]*genaiconfig.ChatConfig, error)
+	ListChatsByUser(ctx context.Context, userID string, agentIDFilter ...string) ([]*genaiconfig.ChatConfig, error)
 	RemoveChat(ctx context.Context, chatID string) error
 	// Chat History Management
 	SaveChatMessage(ctx context.Context, chatID string, message genaiconfig.ChatMessage) error
@@ -117,13 +118,53 @@ func (r *RedisClient) RemoveUser(ctx context.Context, userID string) error {
 // Chat Management
 // -----------------------------------------------------------
 
-func (r *RedisClient) CreateChat(ctx context.Context, chat genaiconfig.ChatConfig) error {
+func (r *RedisClient) CreateChat(ctx context.Context, chat *genaiconfig.ChatConfig) error {
 	if err := r.setJSON(ctx, generateKey(entityChat, chat.ID), chat); err != nil {
 		return err
 	}
-	return r.saveToSet(ctx, allChatsSetKey, chat.ID)
+	err := r.saveToSet(ctx, allChatsSetKey, chat.ID)
+	if err != nil {
+		return err
+	}
+	if chat.UserID != "" {
+		userChatsKey := generateKey(entityUser, chat.UserID+":chats")
+		if err := r.saveToSet(ctx, userChatsKey, chat.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+func (r *RedisClient) ListChatsByUser(ctx context.Context, userID string, agentIDFilter ...string) ([]*genaiconfig.ChatConfig, error) {
+	userChatsKey := generateKey(entityUser, userID+":chats")
 
+	ids, err := r.getSetByKey(ctx, userChatsKey)
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []*genaiconfig.ChatConfig{}, nil
+	}
+
+	listBytes, err := r.listEntities(ctx, ids, entityChat)
+	if err != nil {
+		return nil, err
+	}
+	chats, err := listEntitiesGeniric[genaiconfig.ChatConfig](ctx, listBytes, entityChat)
+	if err != nil {
+		return nil, err
+	}
+	if len(agentIDFilter) > 0 {
+		filter := agentIDFilter[0]
+		filtered := make([]*genaiconfig.ChatConfig, 0, len(chats))
+		for _, chat := range chats {
+			if chat.AgentID == filter {
+				filtered = append(filtered, chat)
+			}
+		}
+		chats = filtered
+	}
+	return chats, nil
+}
 func (r *RedisClient) GetChat(ctx context.Context, chatID string) (*genaiconfig.ChatConfig, error) {
 	key := generateKey(entityChat, chatID)
 	bytes, err := r.getJSONBytes(ctx, key)
