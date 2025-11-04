@@ -18,16 +18,16 @@ We will **continue building additional AI packages** in the Go ecosystem, includ
 
 ## Features
 
-* Create and manage multiple **agents** with personalized system instructions and default models.
-* Stateful **chat sessions** with users, including history tracking.
-* **Streaming chat responses** with partial output.
-* **Function call / tool integration** for tool-assisted responses.
-* **Structured output** via schema configurations.
-* **Redis-based persistence** for agents, chats, and user context.
-* Supports **text embedding** and bulk embedding operations.
-* Flexible **generation configuration** per agent, chat, or prompt override.
-* Fully typed Go library for developers.
-* Makes building **MCP clients and servers** seamless and unified.
+- Create and manage multiple **agents** with personalized system instructions and default models.
+- Stateful **chat sessions** with users, including history tracking.
+- **Streaming chat responses** with partial output.
+- **Function call / tool integration** for tool-assisted responses.
+- **Structured output** via schema configurations.
+- **Redis-based persistence** for agents, chats, and user context.
+- Supports **text embedding** and bulk embedding operations.
+- Flexible **generation configuration** per agent, chat, or prompt override.
+- Fully typed Go library for developers.
+- Makes building **MCP clients and servers** seamless and unified.
 
 ---
 
@@ -112,10 +112,10 @@ func main() {
 
 Agents are reusable AI personas that encapsulate:
 
-* **Persona description**
-* **Default model**
-* **Default generation configuration**
-* **Tool integrations**
+- **Persona description**
+- **Default model**
+- **Default generation configuration**
+- **Tool integrations**
 
 ```mermaid
 graph TD
@@ -149,10 +149,10 @@ _ = agent.AddTool(ctx, weatherTool)
 
 Chats provide stateful conversations with:
 
-* **History tracking**
-* **Streaming responses**
-* **Tool response handling**
-* **Structured output**
+- **History tracking**
+- **Streaming responses**
+- **Tool response handling**
+- **Structured output**
 
 ```mermaid
 flowchart TD
@@ -214,8 +214,8 @@ API --> Vectors[Vectors stored / used for similarity search]
 
 ## Redis Persistence
 
-* Agents, chats, and user context are persisted in **Redis**.
-* Chat history is saved automatically for each user.
+- Agents, chats, and user context are persisted in **Redis**.
+- Chat history is saved automatically for each user.
 
 ```mermaid
 graph TD
@@ -230,10 +230,10 @@ User[User] <--> Redis
 
 `genaiclient` defines structured errors for:
 
-* Agent creation/retrieval/removal
-* Chat creation/retrieval
-* Content conversion and embedding
-* Function call and tool errors
+- Agent creation/retrieval/removal
+- Chat creation/retrieval
+- Content conversion and embedding
+- Function call and tool errors
 
 Errors are **wrapped** with context for easier debugging.
 
@@ -241,20 +241,20 @@ Errors are **wrapped** with context for easier debugging.
 
 ## Advanced Features
 
-* Override **generation configuration** per chat or prompt.
-* Streamed messages with **tool integration**.
-* Structured output using **SchemaConfig** for JSON-formatted responses.
-* Fully **agent-agnostic**, allowing multiple agents with different personalities in the same application.
-* Supports **building MCP clients and servers** efficiently using Go concurrency.
+- Override **generation configuration** per chat or prompt.
+- Streamed messages with **tool integration**.
+- Structured output using **SchemaConfig** for JSON-formatted responses.
+- Fully **agent-agnostic**, allowing multiple agents with different personalities in the same application.
+- Supports **building MCP clients and servers** efficiently using Go concurrency.
 
 ---
 
 ## Example Projects
 
-* CLI streaming chat with tool integration
-* Conversational tool-based demos (weather, news)
-* Structured JSON response generation
-* Future MCP client/server demos using this library
+- CLI streaming chat with tool integration
+- Conversational tool-based demos (weather, news)
+- Structured JSON response generation
+- Future MCP client/server demos using this library
 
 ---
 

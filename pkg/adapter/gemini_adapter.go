@@ -94,14 +94,15 @@ func GeminiConfigFromGenerationConfig(config *genaiconfig.GenerationConfig) (*ge
 	// Convert ResponseJSONSchema map to genai.Schema
 	responseSchema := config.ResponseSchemaConfig
 	if responseSchema != nil {
+		genConfig.ResponseMIMEType = "application/json"
 		if responseSchema.SchemaJSON != nil {
 			genConfig.ResponseJsonSchema = responseSchema.SchemaJSON
 		}
 		if responseSchema.Schema != nil {
-			genConfig.ResponseJsonSchema = buildSchemaFromType(reflect.TypeOf(responseSchema.Schema))
+			genConfig.ResponseSchema = buildSchemaFromType(reflect.TypeOf(responseSchema.Schema))
 		}
 		if responseSchema.SchemaGenAI != nil {
-			genConfig.ResponseJsonSchema = responseSchema.SchemaGenAI
+			genConfig.ResponseSchema = responseSchema.SchemaGenAI
 		}
 	}
 

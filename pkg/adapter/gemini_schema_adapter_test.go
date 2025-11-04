@@ -73,24 +73,24 @@ func Test_buildSchemaFromType(t *testing.T) {
 				// ... (rest of property checks omitted for brevity)
 			},
 		},
-		// {
-		// 	name:         "Simple String Response",
-		// 	input:        SimpleResponse{},
-		// 	expectedType: genai.TypeObject,
-		// 	check: func(t *testing.T, s *genai.Schema) {
-		// 		checkProp(t, s, "status", genai.TypeString)
-		// 	},
-		// },
-		// {
-		// 	name:         "Primitive String",
-		// 	input:        "",
-		// 	expectedType: genai.TypeString,
-		// 	check: func(t *testing.T, s *genai.Schema) {
-		// 		if s.Type != genai.TypeString {
-		// 			t.Errorf("Expected TypeString, got %v", s.Type)
-		// 		}
-		// 	},
-		// },
+		{
+			name:         "Simple String Response",
+			input:        SimpleResponse{},
+			expectedType: genai.TypeObject,
+			check: func(t *testing.T, s *genai.Schema) {
+				checkProp(t, s, "status", genai.TypeString)
+			},
+		},
+		{
+			name:         "Primitive String",
+			input:        "",
+			expectedType: genai.TypeString,
+			check: func(t *testing.T, s *genai.Schema) {
+				if s.Type != genai.TypeString {
+					t.Errorf("Expected TypeString, got %v", s.Type)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -126,69 +126,69 @@ func Test_buildSchemaFromType(t *testing.T) {
 }
 
 // // Define a minimal mock for the external type
-// type MockToolRequestConfig struct {
-// 	RequestSchemaGenAI *genai.Schema
-// }
-// type MockToolResponseConfig struct {
-// 	ResponseSchemaGenAI *genai.Schema
-// }
-// type MockTool struct {
-// 	Name           string
-// 	Description    string
-// 	RequestConfig  MockToolRequestConfig
-// 	ResponseConfig MockToolResponseConfig
-// }
-//
-// func TestNewToolFromSignatures(t *testing.T) {
-// 	t.Log("--- STARTING TestNewToolFromSignatures ---")
-//
-// 	req := ComplexRequest{}
-// 	res := SimpleResponse{}
-// 	toolName := "test_tool"
-// 	toolDesc := "A tool for testing."
-//
-// 	t.Logf("TOOL INPUT: Name='%s', Description='%s'", toolName, toolDesc)
-// 	t.Logf("REQUEST SIGNATURE: %s", reflect.TypeOf(req).Name())
-// 	t.Logf("RESPONSE SIGNATURE: %s", reflect.TypeOf(res).Name())
-//
-// 	// Call the function under test
-// 	tool, err := NewToolFromSignatures(toolName, toolDesc, req, res) // Returns genaiconfig.Tool, assumed similar to MockTool
-//
-// 	if err != nil {
-// 		t.Fatalf("NewToolFromSignatures() error = %v, want nil", err)
-// 	}
-//
-// 	// 🚀 FIX: Marshal the final assembled Tool object to indented JSON.
-// 	jsonBytes, jsonErr := json.MarshalIndent(tool, "", "  ")
-// 	if jsonErr != nil {
-// 		t.Fatalf("Failed to marshal final tool to JSON for logging: %v", jsonErr)
-// 	}
-//
-// 	t.Logf("GENERATED TOOL NAME: %s", tool.Name)
-// 	t.Logf("GENERATED TOOL DESCRIPTION: %s", tool.Description)
-// 	t.Logf("REQUEST SCHEMA PROPERTIES COUNT: %d", len(tool.RequestConfig.RequestSchemaGenAI.Properties))
-// 	t.Logf("RESPONSE SCHEMA PROPERTIES COUNT: %d", len(tool.ResponseConfig.ResponseSchemaGenAI.Properties))
-// 	t.Logf("\n--- GENERATED TOOL (JSON STRUCTURE) ---\n%s\n--- END JSON ---\n", jsonBytes) // Log the JSON
-//
-// 	// Continue with assertions
-// 	if tool.Name != toolName {
-// 		t.Errorf("Tool Name got = %v, want %v", tool.Name, toolName)
-// 	}
-// 	if tool.Description != toolDesc {
-// 		t.Errorf("Tool Description got = %v, want %v", tool.Description, toolDesc)
-// 	}
-//
-// 	// Check Request Schema
-// 	reqSchema := tool.RequestConfig.RequestSchemaGenAI
-// 	if len(reqSchema.Properties) != 7 {
-// 		t.Errorf("Request Schema expected 7 properties, got %d", len(reqSchema.Properties))
-// 	}
-//
-// 	// Check Response Schema
-// 	resSchema := tool.ResponseConfig.ResponseSchemaGenAI
-// 	if len(resSchema.Properties) != 1 {
-// 		t.Errorf("Response Schema expected 1 property, got %d", len(resSchema.Properties))
-// 	}
-//
-// 	t.Log("--- ENDING TestNewToolFromSignatures (PASS) ---")
-// }
+type MockToolRequestConfig struct {
+	RequestSchemaGenAI *genai.Schema
+}
+type MockToolResponseConfig struct {
+	ResponseSchemaGenAI *genai.Schema
+}
+type MockTool struct {
+	Name           string
+	Description    string
+	RequestConfig  MockToolRequestConfig
+	ResponseConfig MockToolResponseConfig
+}
+
+func TestNewToolFromSignatures(t *testing.T) {
+	t.Log("--- STARTING TestNewToolFromSignatures ---")
+
+	req := ComplexRequest{}
+	res := SimpleResponse{}
+	toolName := "test_tool"
+	toolDesc := "A tool for testing."
+
+	t.Logf("TOOL INPUT: Name='%s', Description='%s'", toolName, toolDesc)
+	t.Logf("REQUEST SIGNATURE: %s", reflect.TypeOf(req).Name())
+	t.Logf("RESPONSE SIGNATURE: %s", reflect.TypeOf(res).Name())
+
+	// Call the function under test
+	tool, err := NewToolFromSignatures(toolName, toolDesc, req, res) // Returns genaiconfig.Tool, assumed similar to MockTool
+
+	if err != nil {
+		t.Fatalf("NewToolFromSignatures() error = %v, want nil", err)
+	}
+
+	// 🚀 FIX: Marshal the final assembled Tool object to indented JSON.
+	jsonBytes, jsonErr := json.MarshalIndent(tool, "", "  ")
+	if jsonErr != nil {
+		t.Fatalf("Failed to marshal final tool to JSON for logging: %v", jsonErr)
+	}
+
+	t.Logf("GENERATED TOOL NAME: %s", tool.Name)
+	t.Logf("GENERATED TOOL DESCRIPTION: %s", tool.Description)
+	t.Logf("REQUEST SCHEMA PROPERTIES COUNT: %d", len(tool.RequestConfig.SchemaGenAI.Properties))
+	t.Logf("RESPONSE SCHEMA PROPERTIES COUNT: %d", len(tool.ResponseConfig.SchemaGenAI.Properties))
+	t.Logf("\n--- GENERATED TOOL (JSON STRUCTURE) ---\n%s\n--- END JSON ---\n", jsonBytes) // Log the JSON
+
+	// Continue with assertions
+	if tool.Name != toolName {
+		t.Errorf("Tool Name got = %v, want %v", tool.Name, toolName)
+	}
+	if tool.Description != toolDesc {
+		t.Errorf("Tool Description got = %v, want %v", tool.Description, toolDesc)
+	}
+
+	// Check Request Schema
+	reqSchema := tool.RequestConfig.SchemaGenAI
+	if len(reqSchema.Properties) != 7 {
+		t.Errorf("Request Schema expected 7 properties, got %d", len(reqSchema.Properties))
+	}
+
+	// Check Response Schema
+	resSchema := tool.ResponseConfig.SchemaGenAI
+	if len(resSchema.Properties) != 1 {
+		t.Errorf("Response Schema expected 1 property, got %d", len(resSchema.Properties))
+	}
+
+	t.Log("--- ENDING TestNewToolFromSignatures (PASS) ---")
+}
