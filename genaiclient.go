@@ -34,8 +34,8 @@ type GenaiClientInterface interface {
 	GetAgent(ctx context.Context, agentID string) (agent.AgentInterface, error)
 	ListAgents(ctx context.Context) ([]*genaiconfig.AgentConfig, error)
 	RemoveAgent(ctx context.Context, agentID string) error
-	Embed(ctx context.Context, text string, model ...string) ([][]float32, error)
-	EmbedBulk(ctx context.Context, text []string, model ...string) ([][][]float32, error)
+	Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error)
+	EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error)
 }
 
 // Genaiclient is the concrete implementation of the GenaiClientInterface.
@@ -96,16 +96,41 @@ func (g *Genaiclient) RemoveAgent(ctx context.Context, agentID string) error {
 	return nil
 }
 
-func (g *Genaiclient) Embed(ctx context.Context, text string, model ...string) ([][]float32, error) {
+type EmbedOptions struct {
+	Model      string
+	Dimensions int32
+}
+
+func (g *Genaiclient) Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error) {
 	content, err := adapter.GeminiContentFromPrompt(&genaiconfig.Prompt{Text: text})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrContentConversionFailed, err)
 	}
 	embeddingModel := g.defaultEmbeddingModel
-	if len(model) > 0 {
-		embeddingModel = model[0]
+	var genaiConfig *genai.EmbedContentConfig
+
+	// Check if options were provided and are non-nil
+	if len(options) > 0 && options[0] != nil {
+		opts := options[0]
+
+		// Override model if specified
+		if opts.Model != "" {
+			embeddingModel = opts.Model
+		}
+
+		// Only set the genaiConfig if dimensions are provided and valid (e.g., > 0)
+		if opts.Dimensions > 0 {
+			dim := opts.Dimensions // Store value in a variable to get its address
+
+			genaiConfig = &genai.EmbedContentConfig{
+				// Set the specific dimension size
+				OutputDimensionality: &dim,
+				// Set the TaskType (highly recommended for retrieval)
+				TaskType: "RETRIEVAL_DOCUMENT",
+			}
+		}
 	}
-	embed, err := g.genaiClient.Models.EmbedContent(ctx, embeddingModel, content, nil)
+	embed, err := g.genaiClient.Models.EmbedContent(ctx, embeddingModel, content, genaiConfig)
 	if err != nil {
 		return nil, fmt.Errorf("%w with model %s: %w", ErrEmbedContentFailed, g.defaultModel, err)
 	}
@@ -116,16 +141,11 @@ func (g *Genaiclient) Embed(ctx context.Context, text string, model ...string) (
 	return response, nil
 }
 
-func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, model ...string) ([][][]float32, error) {
+func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error) {
 	response := make([][][]float32, len(text))
 	for index, v := range text {
-		embeddingModel := g.defaultEmbeddingModel
-		if len(model) > 0 {
-			embeddingModel = model[0]
-		}
-		res, err := g.Embed(ctx, v, embeddingModel)
+		res, err := g.Embed(ctx, v, options...)
 		if err != nil {
-			// Error wrapping added, including the index of the failed item
 			return nil, fmt.Errorf("%w at index %d: %w", ErrEmbedBulkFailed, index, err)
 		}
 		response[index] = res
