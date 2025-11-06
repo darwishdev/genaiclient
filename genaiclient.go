@@ -155,7 +155,7 @@ func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*
 		res, err := g.Embed(ctx, v, options...)
 		if err != nil {
 			truncatedV := truncateString(v, maxErrorTextLength)
-			return nil, fmt.Errorf("%w at index (value: '%s') %d: %w", ErrEmbedBulkFailed, truncatedV, index, err)
+			return nil, fmt.Errorf("%w at index %d: %w , (value: '%s') ", ErrEmbedBulkFailed, index, err, truncatedV)
 		}
 		response[index] = res
 	}
