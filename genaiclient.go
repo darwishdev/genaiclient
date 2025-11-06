@@ -141,12 +141,21 @@ func (g *Genaiclient) Embed(ctx context.Context, text string, options ...*EmbedO
 	return response, nil
 }
 
+const maxErrorTextLength = 250
+
+func truncateString(s string, maxLen int) string {
+	if len(s) > maxLen {
+		return s[:maxLen] + "..."
+	}
+	return s
+}
 func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error) {
 	response := make([][][]float32, len(text))
 	for index, v := range text {
 		res, err := g.Embed(ctx, v, options...)
 		if err != nil {
-			return nil, fmt.Errorf("%w at index %d: %w", ErrEmbedBulkFailed, index, err)
+			truncatedV := truncateString(v, maxErrorTextLength)
+			return nil, fmt.Errorf("%w at index (value: '%s') %d: %w", ErrEmbedBulkFailed, truncatedV, index, err)
 		}
 		response[index] = res
 	}
