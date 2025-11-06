@@ -151,6 +151,7 @@ func truncateString(s string, maxLen int) string {
 }
 func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error) {
 	response := make([][][]float32, len(text))
+
 	for index, v := range text {
 		res, err := g.Embed(ctx, v, options...)
 		if err != nil {
