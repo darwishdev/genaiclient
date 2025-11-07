@@ -34,8 +34,8 @@ type GenaiClientInterface interface {
 	GetAgent(ctx context.Context, agentID string) (agent.AgentInterface, error)
 	ListAgents(ctx context.Context) ([]*genaiconfig.AgentConfig, error)
 	RemoveAgent(ctx context.Context, agentID string) error
-	Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error)
-	EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error)
+	Embed(ctx context.Context, text string, options ...*EmbedOptions) ([]float32, error)
+	EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][]float32, error)
 }
 
 // Genaiclient is the concrete implementation of the GenaiClientInterface.
@@ -101,7 +101,7 @@ type EmbedOptions struct {
 	Dimensions int32
 }
 
-func (g *Genaiclient) Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error) {
+func (g *Genaiclient) Embed(ctx context.Context, text string, options ...*EmbedOptions) ([]float32, error) {
 	content, err := adapter.GeminiContentFromPrompt(&genaiconfig.Prompt{Text: text})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrContentConversionFailed, err)
@@ -134,11 +134,7 @@ func (g *Genaiclient) Embed(ctx context.Context, text string, options ...*EmbedO
 	if err != nil {
 		return nil, fmt.Errorf("%w with model %s: %w", ErrEmbedContentFailed, g.defaultModel, err)
 	}
-	response := make([][]float32, len(embed.Embeddings))
-	for index, embedding := range embed.Embeddings {
-		response[index] = embedding.Values
-	}
-	return response, nil
+	return embed.Embeddings[0].Values, nil // Returns []float32, not [][]float32
 }
 
 const maxErrorTextLength = 250
@@ -149,8 +145,8 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s
 }
-func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][][]float32, error) {
-	response := make([][][]float32, len(text))
+func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][]float32, error) {
+	response := make([][]float32, len(text))
 
 	for index, v := range text {
 		res, err := g.Embed(ctx, v, options...)
