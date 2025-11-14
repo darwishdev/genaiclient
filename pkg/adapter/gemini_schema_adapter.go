@@ -30,6 +30,10 @@ func BuildSchemaFromJson(v []byte) (*genai.Schema, error) {
 	return &genSchema, nil
 }
 
+func BuildSchemaFromStruct[T interface{}](t T) *genai.Schema {
+	return buildSchemaFromType(reflect.TypeOf(t))
+}
+
 func buildSchemaFromType(t reflect.Type) *genai.Schema {
 	s := &genai.Schema{}
 

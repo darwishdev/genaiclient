@@ -2,6 +2,7 @@ package genaiclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors" // Import errors for base error definition
 	"fmt"    // Import fmt for error wrapping (%w)
 
@@ -36,6 +37,8 @@ type GenaiClientInterface interface {
 	RemoveAgent(ctx context.Context, agentID string) error
 	Embed(ctx context.Context, text string, options ...*EmbedOptions) ([]float32, error)
 	EmbedBulk(ctx context.Context, text []string, options ...*EmbedOptions) ([][]float32, error)
+	BuildGeminiTools(tools []*genaiconfig.Tool) ([]*genai.Tool, error)
+	BuildGeminiTool(tool *genaiconfig.Tool) (*genai.Tool, error)
 }
 
 // Genaiclient is the concrete implementation of the GenaiClientInterface.
@@ -157,4 +160,106 @@ func (g *Genaiclient) EmbedBulk(ctx context.Context, text []string, options ...*
 		response[index] = res
 	}
 	return response, nil
+}
+
+func (g *Genaiclient) BuildGeminiTools(tools []*genaiconfig.Tool) ([]*genai.Tool, error) {
+	return adapter.BuildGeminiTools(tools)
+}
+func (g *Genaiclient) BuildGeminiTool(tool *genaiconfig.Tool) (*genai.Tool, error) {
+	return adapter.BuildGeminiTool(tool)
+}
+
+func BuildSchemaFromStruct[T interface{}](instance T) *genai.Schema {
+	return adapter.BuildSchemaFromStruct(instance)
+}
+
+// GenerateStructured generates content with a structured response based on the generic type T.
+// It automatically sets the response schema to match the structure of T.
+func GenerateStructured[T any](ctx context.Context, agent agent.AgentInterface, userID string, prompt *genaiconfig.Prompt, overrideConfig ...*genaiconfig.ChatConfig) (*T, error) {
+	// Create an instance of T to build the schema
+	var instance T
+	schema := adapter.BuildSchemaFromStruct(instance)
+	var configToUse *genaiconfig.ChatConfig
+	if len(overrideConfig) > 0 && overrideConfig[0] != nil {
+		configToUse = overrideConfig[0]
+		if configToUse.GenerationConfig == nil {
+			configToUse.GenerationConfig = &genaiconfig.GenerationConfig{}
+		}
+	} else {
+		configToUse = &genaiconfig.ChatConfig{
+			GenerationConfig: &genaiconfig.GenerationConfig{},
+		}
+	}
+
+	// Set the response schema
+	configToUse.GenerationConfig.ResponseSchemaConfig = &genaiconfig.SchemaConfig{
+		Schema: schema,
+	}
+
+	// Call the base Generate function
+	response, err := agent.Generate(ctx, userID, prompt, configToUse)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if response has content
+	if response == nil || len(response.Text) == 0 {
+		return nil, fmt.Errorf("empty response")
+	}
+
+	// Unmarshal the response into the target type
+	var result T
+	if err := json.Unmarshal([]byte(response.Text), &result); err != nil {
+		return nil, fmt.Errorf("error unmarshaling json :%w", err)
+	}
+
+	return &result, nil
+}
+
+func SendStructured[T any](
+	ctx context.Context,
+	chat agent.ChatInterface,
+	prompt *genaiconfig.Prompt,
+	overrideConfig ...*genaiconfig.ChatConfig,
+) (*T, error) {
+
+	// Create an instance of T
+	var instance T
+	schema := adapter.BuildSchemaFromStruct(instance)
+
+	// Build final config
+	var configToUse *genaiconfig.ChatConfig
+	if len(overrideConfig) > 0 && overrideConfig[0] != nil {
+		configToUse = overrideConfig[0]
+		if configToUse.GenerationConfig == nil {
+			configToUse.GenerationConfig = &genaiconfig.GenerationConfig{}
+		}
+	} else {
+		configToUse = &genaiconfig.ChatConfig{
+			GenerationConfig: &genaiconfig.GenerationConfig{},
+		}
+	}
+
+	// Inject schema
+	configToUse.GenerationConfig.ResponseSchemaConfig = &genaiconfig.SchemaConfig{
+		Schema: schema,
+	}
+
+	// Send the message
+	resp, err := chat.SendMessage(ctx, *prompt, configToUse)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp == nil || len(resp.Text) == 0 {
+		return nil, fmt.Errorf("empty response")
+	}
+
+	// Unmarshal into T
+	var result T
+	if err := json.Unmarshal([]byte(resp.Text), &result); err != nil {
+		return nil, fmt.Errorf("error unmarshaling json: %w", err)
+	}
+
+	return &result, nil
 }
