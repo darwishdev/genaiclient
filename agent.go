@@ -2,8 +2,11 @@ package genaiclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/darwishdev/genaiclient/pkg/adapter"
+	"github.com/darwishdev/genaiclient/pkg/genaiconfig"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/adk/agent"
@@ -15,10 +18,16 @@ import (
 	"google.golang.org/genai"
 )
 
+var (
+	ErrContentConversionFailed = errors.New("failed to convert prompt to gemini content")
+	ErrEmbedContentFailed      = errors.New("gemini api call failed to embed content")
+)
+
 type GenAIAgentInterface interface {
 	NewInMemorySession(ctx context.Context, userID string) GenAISessionInterface
 	NewVertexSession(ctx context.Context, userID string) (GenAISessionInterface, error)
 	NewRedisSession(ctx context.Context, userID string, sessionID string, rdb *redis.Client) (GenAISessionInterface, error)
+	Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error)
 }
 type GenAIAgent struct {
 	model                *model.LLM
@@ -26,6 +35,7 @@ type GenAIAgent struct {
 	appName              string
 	userID               string
 	modelName            string
+	genaiClient          *genai.Client
 	sessionService       session.Service
 	beforeModelCallbacks []llmagent.BeforeModelCallback
 	afterModelCallbacks  []llmagent.AfterModelCallback
@@ -88,6 +98,10 @@ func NewGeminiAgent(appName string,
 		afterModelCallbacks = append(afterModelCallbacks, a)
 	}
 	ctx := context.Background()
+	genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
+	if err != nil {
+		return nil, err
+	}
 	model, err := gemini.NewModel(ctx, modelName, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create model: %w", err)
@@ -113,6 +127,7 @@ func NewGeminiAgent(appName string,
 		modelName:            modelName,
 		agent:                agent,
 		beforeModelCallbacks: beforeModelCallbacks,
+		genaiClient:          genaiClient,
 		afterModelCallbacks:  afterModelCallbacks,
 	}, nil
 }
@@ -225,4 +240,51 @@ func (a *GenAIAgent) NewRedisSession(ctx context.Context, userID string, session
 		session: sessionResp.Session,
 		runner:  runnerInstance,
 	}, nil
+}
+
+type EmbedOptions struct {
+	Model      string
+	TaskType   string
+	Dimensions int32
+}
+
+func (a *GenAIAgent) Embed(ctx context.Context, text string, options ...*EmbedOptions) ([][]float32, error) {
+	content, err := adapter.GeminiContentFromPrompt(&genaiconfig.Prompt{Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrContentConversionFailed, err)
+	}
+	embeddingModel := "gemini-embedding-001"
+	var genaiConfig *genai.EmbedContentConfig
+
+	// Check if options were provided and are non-nil
+	if len(options) > 0 && options[0] != nil {
+		opts := options[0]
+
+		// Override model if specified
+		if opts.Model != "" {
+			embeddingModel = opts.Model
+		}
+
+		// Only set the genaiConfig if dimensions are provided and valid (e.g., > 0)
+		if opts.Dimensions > 0 {
+			dim := opts.Dimensions // Store value in a variable to get its address
+			taskType := "RETRIEVAL_DOCUMENT"
+			if opts.TaskType != "" {
+				taskType = opts.TaskType
+			}
+			genaiConfig = &genai.EmbedContentConfig{
+				OutputDimensionality: &dim,
+				TaskType:             taskType,
+			}
+		}
+	}
+	embed, err := a.genaiClient.Models.EmbedContent(ctx, embeddingModel, content, genaiConfig)
+	if err != nil {
+		return nil, fmt.Errorf("%w with model : %w", ErrEmbedContentFailed, err)
+	}
+	response := make([][]float32, len(embed.Embeddings))
+	for index, embedding := range embed.Embeddings {
+		response[index] = embedding.Values
+	}
+	return response, nil
 }
