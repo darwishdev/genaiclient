@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/darwishdev/genaiclient/pkg/genaiconfig"
@@ -38,13 +39,16 @@ func buildSchemaFromType(t reflect.Type) *genai.Schema {
 	s := &genai.Schema{}
 
 	switch t.Kind() {
+
 	case reflect.Struct:
 		s.Type = genai.TypeObject
 		s.Properties = map[string]*genai.Schema{}
+		s.PropertyOrdering = []string{}
 
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
-			if f.PkgPath != "" { // skip unexportede
+
+			if f.PkgPath != "" { // skip unexported
 				continue
 			}
 
@@ -56,7 +60,44 @@ func buildSchemaFromType(t reflect.Type) *genai.Schema {
 			}
 
 			fieldSchema := buildSchemaFromType(baseType(f.Type))
+
+			// --- NEW: Read description tag ---
+			if desc := f.Tag.Get("description"); desc != "" {
+				fieldSchema.Description = desc
+			}
+
+			// --- NEW: Read minLength/maxLength ---
+			if minLen := f.Tag.Get("minLength"); minLen != "" {
+				if v, err := strconv.Atoi(minLen); err == nil {
+					x := int64(v)
+					fieldSchema.MinLength = &x
+				}
+			}
+			if maxLen := f.Tag.Get("maxLength"); maxLen != "" {
+				if v, err := strconv.Atoi(maxLen); err == nil {
+					x := int64(v)
+					fieldSchema.MaxLength = &x
+				}
+			}
+
+			// --- NEW: Read minItems/maxItems ---
+			if minItems := f.Tag.Get("minItems"); minItems != "" {
+				if v, err := strconv.Atoi(minItems); err == nil {
+					x := int64(v)
+					fieldSchema.MinItems = &x
+				}
+			}
+			if maxItems := f.Tag.Get("maxItems"); maxItems != "" {
+				if v, err := strconv.Atoi(maxItems); err == nil {
+					x := int64(v)
+					fieldSchema.MaxItems = &x
+				}
+			}
+
 			s.Properties[fieldName] = fieldSchema
+			s.PropertyOrdering = append(s.PropertyOrdering, fieldName)
+
+			// Required if not omitempty
 			isOmitempty := false
 			for _, opt := range parts[1:] {
 				if opt == "omitempty" {
@@ -64,8 +105,6 @@ func buildSchemaFromType(t reflect.Type) *genai.Schema {
 					break
 				}
 			}
-
-			// Only append to s.Required if 'omitempty' is NOT found.
 			if !isOmitempty {
 				s.Required = append(s.Required, fieldName)
 			}
